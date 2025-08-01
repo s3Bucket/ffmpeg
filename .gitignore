@@ -1,3 +1,4 @@
 .idea
+node_modules/
 ffmpeg.iml
-node_modules
+
