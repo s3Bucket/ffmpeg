@@ -11,21 +11,42 @@ app.post('/convert', upload.single('file'), (req, res) => {
   const inputPath = req.file.path;
   const outputPath = `${inputPath}.mp3`;
 
-  const cmd = `ffmpeg -i "${inputPath}" -q:a 0 -map a "${outputPath}"`;
+  // Schritt 1: Audiospur prüfen
+  const checkCmd = `ffmpeg -i "${inputPath}" -hide_banner`;
+  exec(checkCmd, (checkErr, stdout, stderr) => {
+    console.log(stderr); // Für Debugging
 
-  exec(cmd, (err) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).send('Conversion failed');
+    if (!stderr.includes('Audio:')) {
+      fs.unlinkSync(inputPath);
+      return res.status(400).json({ success: false, message: 'Keine Audiospur erkannt' });
     }
 
-    res.download(outputPath, 'converted.mp3', (err) => {
-      fs.unlinkSync(inputPath);
-      fs.unlinkSync(outputPath);
+    // Schritt 2: Konvertieren mit stabilem Befehl
+    const convertCmd = `ffmpeg -i "${inputPath}" -vn -acodec libmp3lame -q:a 0 "${outputPath}"`;
+    exec(convertCmd, (convertErr) => {
+      if (convertErr) {
+        console.error('Fehler bei ffmpeg:', convertErr);
+        fs.unlinkSync(inputPath);
+        return res.status(500).json({ success: false, message: 'Konvertierung fehlgeschlagen' });
+      }
+
+      // Schritt 3: Datei ausliefern und aufräumen
+      res.download(outputPath, 'converted.mp3', (downloadErr) => {
+        try {
+          fs.unlinkSync(inputPath);
+          fs.unlinkSync(outputPath);
+        } catch (cleanupErr) {
+          console.error('Fehler beim Aufräumen:', cleanupErr);
+        }
+
+        if (downloadErr) {
+          console.error('Fehler beim Download:', downloadErr);
+        }
+      });
     });
   });
 });
 
 app.listen(8080, () => {
-  console.log('FFmpeg API running on port 8080');
+  console.log('🎧 FFmpeg API running on port 8080');
 });
